@@ -7,6 +7,10 @@ services:
     name: la-bomba-web
     buildCommand: npm run build
     staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_APP_URL
         sync: false
