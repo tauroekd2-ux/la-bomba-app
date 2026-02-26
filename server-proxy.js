@@ -118,12 +118,17 @@ if (!SUPABASE_URL.startsWith('https://')) {
 }
 
 const app = express()
+const allowedOrigin = (process.env.VITE_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
 app.use(cors({
-  origin: [
-    /^http:\/\/localhost:51\d{2}$/,
-    /^http:\/\/127\.0\.0\.1:51\d{2}$/,
-    /^http:\/\/192\.168\.\d+\.\d+:51\d{2}$/, // móvil en red local
-  ],
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true) // p.ej. Postman o mismo origen
+    if (/^http:\/\/localhost:51\d{2}$/.test(origin)) return cb(null, true)
+    if (/^http:\/\/127\.0\.0\.1:51\d{2}$/.test(origin)) return cb(null, true)
+    if (/^http:\/\/192\.168\.\d+\.\d+:51\d{2}$/.test(origin)) return cb(null, true)
+    if (allowedOrigin && origin === allowedOrigin) return cb(null, true)
+    if (/^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin)) return cb(null, true)
+    cb(null, false)
+  },
 }))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.text())
