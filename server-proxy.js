@@ -45,7 +45,8 @@ const RESEND_FROM = (process.env.RESEND_FROM || 'LA BOMBA <onboarding@resend.dev
 const DEPOSIT_EMAIL_SECRET = (process.env.DEPOSIT_EMAIL_SECRET || '').trim()
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
 const TELEGRAM_ADMIN_CHAT_ID = (process.env.TELEGRAM_ADMIN_CHAT_ID || '').trim()
-const TELEGRAM_USER_BOT_TOKEN = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.VITE_TELEGRAM_USER_BOT_TOKEN || '').trim()
+// Bot de usuarios: UN solo token para enviar notificaciones al usuario (depósito/retiro). Solo en el proxy.
+const TELEGRAM_USER_BOT_TOKEN = (process.env.TELEGRAM_USER_BOT_TOKEN || '').trim()
 const TELEGRAM_NOTIFY_SECRET = (process.env.TELEGRAM_NOTIFY_SECRET || '').trim()
 const NTFY_TOPIC = (process.env.VITE_NTFY_TOPIC || process.env.NTFY_TOPIC || '').trim().replace(/-/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
 // Groq: IA en línea gratis (soporte y asistente admin). API key en https://console.groq.com
@@ -286,50 +287,40 @@ app.post('/api/send-retiro-procesado-email', async (req, res) => {
   }
 })
 
-// Telegram al usuario (depósito acreditado, retiro procesado). Solo admin con JWT. Token del bot de usuarios en el proxy.
+// ----- Bot de usuarios: notificaciones al usuario (depósito acreditado, retiro procesado) -----
+// El admin envía desde la app; el proxy usa TELEGRAM_USER_BOT_TOKEN para enviar por Telegram.
 app.post('/api/send-telegram-to-user', async (req, res) => {
   try {
-    console.log('[send-telegram-to-user] POST', { hasAuth: !!(req.headers?.authorization) })
-    const adminOk = await isAdminRequest(req)
-    console.log('[send-telegram-to-user] adminOk', adminOk)
-    if (!adminOk) {
-      return res.status(403).json({ ok: false, error: 'No autorizado. Inicia sesión como admin (usuario en admin_roles).' })
-    }
-    const { chat_id, text } = req.body || {}
-    // Normalizar chat_id: solo dígitos o "-" + dígitos (Telegram)
-    let cid = (chat_id != null ? String(chat_id) : '').trim().replace(/\s/g, '')
-    const isGroup = cid.startsWith('-')
-    cid = cid.replace(/\D/g, '')
-    if (isGroup && cid) cid = '-' + cid
-    const msg = typeof text === 'string' ? text.trim() : ''
-    if (!cid || !msg) {
-      return res.status(400).json({ ok: false, error: 'Faltan chat_id o text' })
+    if (!(await isAdminRequest(req))) {
+      return res.status(403).json({ ok: false, error: 'No autorizado' })
     }
     if (!TELEGRAM_USER_BOT_TOKEN) {
-      console.log('[send-telegram-to-user] TELEGRAM_USER_BOT_TOKEN no configurado en el proxy')
-      return res.status(200).json({ ok: false, error: 'En Render: Web Service (proxy) → Environment → añade TELEGRAM_USER_BOT_TOKEN con el token del bot de usuarios.' })
+      return res.status(200).json({ ok: false, error: 'En el proxy (Render) falta TELEGRAM_USER_BOT_TOKEN. Añade el token del bot de usuarios (@Tel_Bomba_bot).' })
     }
-    // Enviar con chat_id como string (API de Telegram lo acepta)
+    const { chat_id, text } = req.body || {}
+    const rawChat = chat_id != null ? String(chat_id).trim() : ''
+    const isNeg = rawChat.startsWith('-')
+    const cid = rawChat.replace(/\D/g, '')
+    const chatId = !cid ? '' : isNeg ? '-' + cid : cid
+    const msg = (typeof text === 'string' ? text : '').trim()
+    if (!chatId || !msg) {
+      return res.status(400).json({ ok: false, error: 'Faltan chat_id o text' })
+    }
     const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_USER_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: cid, text: msg }),
+      body: JSON.stringify({ chat_id: chatId, text: msg }),
     })
     const body = await tgRes.json().catch(() => ({}))
-    if (!tgRes.ok) {
-      const errMsg = body.description || body.error_description || `HTTP ${tgRes.status}`
-      console.error('[send-telegram-to-user] Telegram API', tgRes.status, errMsg, 'body', JSON.stringify(body).slice(0, 200))
-      return res.status(200).json({ ok: false, error: errMsg })
+    if (!tgRes.ok || !body.ok) {
+      const err = body.description || body.error_description || `HTTP ${tgRes.status}`
+      console.error('[send-telegram-to-user]', err)
+      return res.status(200).json({ ok: false, error: err })
     }
-    if (!body.ok) {
-      console.error('[send-telegram-to-user] Telegram body.ok false', body)
-      return res.status(200).json({ ok: false, error: body.description || 'Telegram no envió el mensaje' })
-    }
-    console.log('[send-telegram-to-user] ok enviado a chat_id', cid.slice(0, 4) + '...' + cid.slice(-2))
     res.status(200).json({ ok: true })
   } catch (e) {
     console.error('[send-telegram-to-user]', e.message)
-    res.status(500).json({ ok: false, error: e.message || 'Server error' })
+    res.status(500).json({ ok: false, error: String(e.message) })
   }
 })
 

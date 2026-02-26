@@ -50,10 +50,15 @@ export async function handler(req: Request): Promise<Response> {
             );
             return new Response(null, { status: 200 });
           }
+          const chatIdStr = String(chatId).replace(/[^\d-]/g, "").trim();
+          if (!chatIdStr) {
+            await sendReply("No se pudo obtener el chat. Intenta de nuevo.");
+            return new Response(null, { status: 200 });
+          }
           const supabase = createClient(supabaseUrl, serviceKey);
           const { data: result } = await supabase.rpc("consume_telegram_link_token", {
             p_token: token,
-            p_chat_id: String(chatId),
+            p_chat_id: chatIdStr,
           });
           const res = Array.isArray(result) ? result[0] : result;
           if (res?.ok) {

@@ -7,7 +7,6 @@ import { supabase } from '../lib/supabase'
 import { RedLabel, UsdcLabel } from '../utils/networkBrand'
 
 const ADMIN_UID = (import.meta.env.VITE_PHANTOM_ADMIN_UID || '').trim()
-const TG_USER_BOT = (import.meta.env.VITE_TELEGRAM_USER_BOT_TOKEN || '').trim()
 
 // En dev, el plugin Vite atiende /api/admin/chat en el mismo servidor. En producción se usa el proxy.
 function getAdminChatApiBase() {
@@ -26,75 +25,40 @@ function getProxyApiBase() {
   return (import.meta.env.VITE_PROXY_URL || 'http://localhost:3031').replace(/\/$/, '')
 }
 
-function sendTelegramToUser(chatId, text, callbacks = {}) {
-  const cid = (chatId ?? '').toString().trim()
-  const { proxyBase, getAuthToken, onNotConfigured, onResult } = callbacks
+// Envía notificación por Telegram al usuario. SOLO vía proxy (token en servidor).
+function sendTelegramToUser(profileOrChatId, text, callbacks = {}) {
+  const { proxyBase, getAuthToken, onResult } = callbacks
+  const cid = profileOrChatId != null && typeof profileOrChatId === 'object'
+    ? getTelegramChatId(profileOrChatId)
+    : getTelegramChatId({ telegram_chat_id: profileOrChatId })
   if (!cid) {
-    if (onResult && typeof onResult === 'function') onResult({ ok: false, error: 'Usuario sin Telegram vinculado' })
+    if (onResult) onResult({ ok: false, error: 'Usuario sin Telegram vinculado' })
     return
   }
   const msg = (text || '').trim()
-  if (!msg) return
-
-  const isProduction = typeof window !== 'undefined' && window.location?.hostname && !/localhost|127\.0\.0\.1/.test(window.location.hostname)
-  const proxyUrl = (proxyBase || '').toString().trim().replace(/\/$/, '')
-  const proxyOk = proxyUrl && !proxyUrl.startsWith('http://localhost') && !proxyUrl.startsWith('http://127.0.0.1')
-  if (isProduction && !proxyOk) {
-    if (onResult) onResult({ ok: false, error: 'En Render (Static Site) añade VITE_PROXY_URL=https://la-bomba-proxy.onrender.com y redeploya.' })
+  if (!msg || !proxyBase || typeof getAuthToken !== 'function') {
+    if (onResult) onResult({ ok: false, error: 'Proxy no configurado (VITE_PROXY_URL)' })
     return
   }
-
-  // Preferir proxy (mismo flujo que admin): token en servidor, no en el cliente
-  if (proxyUrl && typeof getAuthToken === 'function') {
-    ;(async () => {
-      try {
-        const token = await getAuthToken()
-        if (!token) {
-          if (onResult) onResult({ ok: false, error: 'No autenticado' })
-          return
-        }
-        const r = await fetch(`${proxyUrl}/api/send-telegram-to-user`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ chat_id: cid, text: msg }),
-        })
-        const data = await r.json().catch(() => ({}))
-        if (onResult) {
-          if (data.skipped === 'telegram_user_bot_not_configured') {
-            onResult({ ok: false, error: 'Proxy: configura TELEGRAM_USER_BOT_TOKEN en Render (Web Service)' })
-          } else {
-            onResult(r.ok && data.ok ? { ok: true } : { ok: false, error: data.error || `HTTP ${r.status}` })
-          }
-        }
-      } catch (err) {
-        const msg = err.message || 'Error de red'
-        if (onResult) onResult({
-          ok: false,
-          error: /fetch|failed|network|cors/i.test(msg)
-            ? 'No se pudo conectar al proxy. Comprueba VITE_PROXY_URL en el Static Site (ej. https://la-bomba-proxy.onrender.com).'
-            : msg,
-        })
+  const base = String(proxyBase).replace(/\/$/, '')
+  ;(async () => {
+    try {
+      const token = await getAuthToken()
+      if (!token) {
+        if (onResult) onResult({ ok: false, error: 'No autenticado' })
+        return
       }
-    })()
-    return
-  }
-
-  if (!TG_USER_BOT) {
-    if (onNotConfigured && typeof onNotConfigured === 'function') onNotConfigured()
-    return
-  }
-  fetch(`https://api.telegram.org/bot${TG_USER_BOT}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: cid, text: msg }),
-  })
-    .then(async (res) => {
-      const body = await res.json().catch(() => ({}))
-      if (onResult) onResult(res.ok ? { ok: true } : { ok: false, error: body.description || body.error_description || `HTTP ${res.status}` })
-    })
-    .catch((err) => {
+      const r = await fetch(`${base}/api/send-telegram-to-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ chat_id: cid, text: msg }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (onResult) onResult(r.ok && data.ok ? { ok: true } : { ok: false, error: data.error || `HTTP ${r.status}` })
+    } catch (err) {
       if (onResult) onResult({ ok: false, error: err.message || 'Error de red' })
-    })
+    }
+  })()
 }
 
 const MASTER_SOLANA = (import.meta.env.VITE_MASTER_WALLET_SOLANA || '').trim()
@@ -356,18 +320,17 @@ export default function AdminPhantom() {
         const monto = Number(confirmacion?.monto) || 0
         const red = confirmacion?.red || ''
         sendTelegramToUser(
-          userChatId,
+          confirmacion?.profiles,
           `✅ LA BOMBA — Depósito acreditado\n\n+$${monto.toFixed(2)} USDC (${red})\nYa está en tu saldo. Puedes jugar o retirar cuando quieras.`,
           {
             proxyBase: base,
             getAuthToken: async () => { const { data } = await supabase.auth.getSession(); return data?.session?.access_token || null },
-            onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura TELEGRAM_USER_BOT_TOKEN en el proxy.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
             onResult: (r) => {
               if (r.ok) {
                 setEmailFeedback({ type: 'ok', text: 'Acreditado. Telegram enviado al usuario.' })
                 setTimeout(() => setEmailFeedback(null), 4000)
               } else {
-                setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` })
+                setEmailFeedback({ type: 'warn', text: `Telegram: ${r.error}` })
                 setTimeout(() => setEmailFeedback(null), 6000)
               }
             }
@@ -534,18 +497,17 @@ export default function AdminPhantom() {
         const monto = Number(retiro?.monto) || 0
         const red = retiro?.red || ''
         sendTelegramToUser(
-          userChatId,
+          retiro?.profiles,
           `✅ LA BOMBA — Retiro procesado\n\n$${monto.toFixed(2)} USDC (${red})\nLos fondos han sido enviados a la dirección que indicaste.`,
           {
             proxyBase: getProxyApiBase(),
             getAuthToken: async () => { const { data } = await supabase.auth.getSession(); return data?.session?.access_token || null },
-            onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura TELEGRAM_USER_BOT_TOKEN en el proxy.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
             onResult: (r) => {
               if (r.ok) {
                 setEmailFeedback({ type: 'ok', text: 'Procesado. Telegram enviado al usuario.' })
                 setTimeout(() => setEmailFeedback(null), 4000)
               } else {
-                setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` })
+                setEmailFeedback({ type: 'warn', text: `Telegram: ${r.error}` })
                 setTimeout(() => setEmailFeedback(null), 6000)
               }
             }
