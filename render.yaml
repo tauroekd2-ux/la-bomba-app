@@ -1,0 +1,52 @@
+# Blueprint para Render: frontend estático + proxy Node.
+
+services:
+  # Frontend (Static Site)
+  - type: web
+    runtime: static
+    name: la-bomba-web
+    buildCommand: npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_APP_URL
+        sync: false
+      - key: VITE_PROXY_URL
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      # Añade en el Dashboard el resto de VITE_* que uses (Stripe, wallets, Telegram, etc.)
+
+  # Proxy (APIs email, Telegram, verify-deposit, etc.)
+  - type: web
+    runtime: node
+    name: la-bomba-proxy
+    buildCommand: npm install
+    startCommand: node server-proxy.js
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: DEPOSIT_EMAIL_SECRET
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ADMIN_CHAT_ID
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: ADMIN_LINKS_BASE
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        sync: false
+    # Añade en el Dashboard: VITE_MASTER_WALLET_* o MASTER_WALLET_* si las usas

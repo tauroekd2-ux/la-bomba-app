@@ -1,0 +1,12 @@
+# Configuración de Edge Functions
+# phantom-webhook-handler es llamada por Helius/Alchemy sin JWT → no verificar
+[functions.phantom-webhook-handler]
+verify_jwt = false
+
+# trigger-deposit-email: el frontend envía JWT; la plataforma a veces rechaza 401. Validamos nosotros (decode JWT + admin_roles).
+[functions.trigger-deposit-email]
+verify_jwt = false
+
+# telegram-user-bot-webhook: Telegram envía las actualizaciones sin Authorization; no verificar JWT
+[functions.telegram-user-bot-webhook]
+verify_jwt = false

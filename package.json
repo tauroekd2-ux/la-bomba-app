@@ -1,0 +1,48 @@
+{
+  "name": "la-bomba-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "proxy": "node server-proxy.js",
+    "dev:all": "concurrently -n proxy,vite -c yellow,cyan \"node server-proxy.js\" \"npm run dev\"",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "migrate": "node scripts/run-migration-002.js",
+    "migrate:003": "node scripts/run-migration-003.js",
+    "migrate:004": "node scripts/run-migration-004.js",
+    "migrate:005": "node scripts/run-migration-005.js",
+    "migrate:006": "node scripts/run-migration-006.js"
+  },
+  "dependencies": {
+    "@stripe/react-stripe-js": "^5.6.0",
+    "@stripe/stripe-js": "^8.8.0",
+    "@supabase/supabase-js": "^2.97.0",
+    "canvas-confetti": "^1.9.4",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "framer-motion": "^12.34.3",
+    "lucide-react": "^0.575.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.13.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@tailwindcss/vite": "^4.2.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "pg": "^8.18.0",
+    "tailwindcss": "^4.2.0",
+    "vite": "^7.3.1"
+  }
+}
