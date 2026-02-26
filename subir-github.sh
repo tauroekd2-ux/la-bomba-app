@@ -1,11 +1,14 @@
 #!/bin/bash
-# Ejecuta en Git Bash desde la carpeta la-bomba-app.
-# 1. Crea un repo nuevo en https://github.com/new (nombre ej: la-bomba-app), vacío, sin README.
-# 2. Sustituye abajo TU_USUARIO y TU_REPO por tu usuario y nombre del repo.
-# 3. Ejecuta: bash subir-github.sh
+# Ejecuta en Git Bash: bash subir-github.sh "https://github.com/TU_USUARIO/TU_REPO.git"
+# O crea REPO_URL.txt con esa URL y ejecuta: bash subir-github.sh
 
-REPO_URL="https://github.com/TU_USUARIO/TU_REPO.git"
-# Si usas SSH: REPO_URL="git@github.com:TU_USUARIO/TU_REPO.git"
+REPO_URL="${1:-}"
+if [ -f "REPO_URL.txt" ]; then
+  REPO_URL="$(cat REPO_URL.txt | tr -d '\r\n' | xargs)"
+fi
+if [ -z "$REPO_URL" ]; then
+  REPO_URL="https://github.com/TU_USUARIO/TU_REPO.git"
+fi
 
 cd "$(dirname "$0")"
 if [ -n "$(git remote)" ]; then

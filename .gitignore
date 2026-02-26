@@ -16,6 +16,8 @@ supabase/.temp/
 .env
 .env.local
 .env.*.local
+GITHUB_USER.txt
+REPO_URL.txt
 
 # Editor directories and files
 .vscode/*
