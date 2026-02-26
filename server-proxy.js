@@ -18,18 +18,22 @@ SUPABASE_URL = (SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.SUP
 const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
 const SUPABASE_ANON_KEY = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim()
 
+const SUPABASE_ANON_OR_SERVICE = SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY
+
 /** Si la petición lleva Authorization: Bearer <jwt>, verifica que el usuario sea admin (admin_roles). Así el cliente no necesita enviar el secret. */
 async function isAdminRequest(req) {
   const auth = (req.headers?.authorization || '').trim()
   if (!auth.startsWith('Bearer ')) return false
   const token = auth.slice(7)
+  if (!SUPABASE_ANON_OR_SERVICE) return false
   const userRes = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/auth/v1/user`, {
-    headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_OR_SERVICE, 'Content-Type': 'application/json' },
   })
   if (!userRes.ok) return false
   const user = await userRes.json().catch(() => null)
   const userId = user?.id
   if (!userId) return false
+  if (!SUPABASE_SERVICE_ROLE_KEY) return false
   const roleRes = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/admin_roles?user_id=eq.${encodeURIComponent(userId)}&select=user_id`, {
     headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
   })
@@ -41,7 +45,7 @@ const RESEND_FROM = (process.env.RESEND_FROM || 'LA BOMBA <onboarding@resend.dev
 const DEPOSIT_EMAIL_SECRET = (process.env.DEPOSIT_EMAIL_SECRET || '').trim()
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
 const TELEGRAM_ADMIN_CHAT_ID = (process.env.TELEGRAM_ADMIN_CHAT_ID || '').trim()
-const TELEGRAM_USER_BOT_TOKEN = (process.env.TELEGRAM_USER_BOT_TOKEN || '').trim()
+const TELEGRAM_USER_BOT_TOKEN = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.VITE_TELEGRAM_USER_BOT_TOKEN || '').trim()
 const TELEGRAM_NOTIFY_SECRET = (process.env.TELEGRAM_NOTIFY_SECRET || '').trim()
 const NTFY_TOPIC = (process.env.VITE_NTFY_TOPIC || process.env.NTFY_TOPIC || '').trim().replace(/-/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
 // Groq: IA en línea gratis (soporte y asistente admin). API key en https://console.groq.com

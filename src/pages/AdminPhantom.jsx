@@ -36,8 +36,16 @@ function sendTelegramToUser(chatId, text, callbacks = {}) {
   const msg = (text || '').trim()
   if (!msg) return
 
+  const isProduction = typeof window !== 'undefined' && window.location?.hostname && !/localhost|127\.0\.0\.1/.test(window.location.hostname)
+  const proxyUrl = (proxyBase || '').toString().trim().replace(/\/$/, '')
+  const proxyOk = proxyUrl && !proxyUrl.startsWith('http://localhost') && !proxyUrl.startsWith('http://127.0.0.1')
+  if (isProduction && !proxyOk) {
+    if (onResult) onResult({ ok: false, error: 'En Render (Static Site) añade VITE_PROXY_URL=https://la-bomba-proxy.onrender.com y redeploya.' })
+    return
+  }
+
   // Preferir proxy (mismo flujo que admin): token en servidor, no en el cliente
-  if (proxyBase && typeof getAuthToken === 'function') {
+  if (proxyUrl && typeof getAuthToken === 'function') {
     ;(async () => {
       try {
         const token = await getAuthToken()
@@ -45,7 +53,7 @@ function sendTelegramToUser(chatId, text, callbacks = {}) {
           if (onResult) onResult({ ok: false, error: 'No autenticado' })
           return
         }
-        const r = await fetch(`${proxyBase.replace(/\/$/, '')}/api/send-telegram-to-user`, {
+        const r = await fetch(`${proxyUrl}/api/send-telegram-to-user`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ chat_id: cid, text: msg }),
