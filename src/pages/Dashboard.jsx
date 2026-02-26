@@ -167,6 +167,7 @@ export default function Dashboard() {
     const maxAttempts = 60
     let attempt = 0
     let offset = 0
+    const userId = user?.id
     const interval = setInterval(async () => {
       attempt++
       if (attempt > maxAttempts) {
@@ -176,6 +177,19 @@ export default function Dashboard() {
         return
       }
       try {
+        // Si el webhook ya vinculó la cuenta (usuario abrió t.me/bot?start=TOKEN), el perfil ya tiene telegram_chat_id
+        if (userId && attempt % 3 === 1) {
+          const { data: prof } = await supabase.from('profiles').select('telegram_chat_id').eq('id', userId).single()
+          if (prof?.telegram_chat_id && String(prof.telegram_chat_id).trim()) {
+            clearInterval(interval)
+            setTelegramPolling(false)
+            setTelegramModalOpen(false)
+            setTelegramLinkToken(null)
+            setTelegramError('')
+            refreshBalance?.()
+            return
+          }
+        }
         const r = await fetch(
           `https://api.telegram.org/bot${botToken}/getUpdates?offset=${offset}&timeout=2`
         )
@@ -257,11 +271,20 @@ export default function Dashboard() {
         <h1 className="text-xl font-bold bg-gradient-to-r from-amber-300 via-amber-400 to-orange-500 bg-clip-text text-transparent text-center">
           LA BOMBA
         </h1>
-        <div className="flex items-center justify-center w-full">
+        <div className="flex items-center justify-center w-full gap-2 flex-wrap">
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-zinc-900/80 border border-zinc-800 backdrop-blur-sm min-w-0">
             <Wallet className="w-5 h-5 text-amber-400 shrink-0" />
             <span className="font-mono font-bold text-amber-400 truncate">${Number(balance).toFixed(2)}</span>
           </div>
+          {isPhantomAdmin && (
+            <button
+              type="button"
+              onClick={() => navigate('/admin-phantom')}
+              className="px-2 py-1 rounded-lg bg-sky-500/20 text-sky-400 text-xs font-medium border border-sky-500/50 hover:bg-sky-500/30 transition"
+            >
+              Admin Phantom
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-3 w-full gap-2 [&_button]:min-h-[48px] [&_button]:min-w-0 [&_button]:touch-manipulation">
           <button
@@ -329,17 +352,15 @@ export default function Dashboard() {
                         </span>
                       )}
                     </button>
-                    {!(profile?.telegram_chat_id || '').trim() && (
-                      <button
-                        type="button"
-                        onClick={() => { handleTelegramNotificaciones(); setMenuOpen(false) }}
-                        disabled={telegramLinking}
-                        className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-left text-sm text-zinc-200 hover:bg-zinc-800/80 hover:text-amber-400 transition disabled:opacity-50"
-                      >
-                        <Send className="w-4 h-4 shrink-0" />
-                        Telegram notificaciones
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => { handleTelegramNotificaciones(); setMenuOpen(false) }}
+                      disabled={telegramLinking}
+                      className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-left text-sm text-zinc-200 hover:bg-zinc-800/80 hover:text-amber-400 transition disabled:opacity-50"
+                    >
+                      <Send className="w-4 h-4 shrink-0" />
+                      Telegram notificaciones
+                    </button>
                     {isPhantomAdmin && (
                       <button
                         type="button"

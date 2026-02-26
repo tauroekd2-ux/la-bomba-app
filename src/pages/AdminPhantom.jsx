@@ -26,14 +26,29 @@ function getProxyApiBase() {
   return (import.meta.env.VITE_PROXY_URL || 'http://localhost:3031').replace(/\/$/, '')
 }
 
-function sendTelegramToUser(chatId, text) {
+function sendTelegramToUser(chatId, text, callbacks = {}) {
   const cid = (chatId ?? '').toString().trim()
-  if (!TG_USER_BOT || !cid) return
+  const { onNotConfigured, onResult } = callbacks
+  if (!cid) {
+    if (onResult && typeof onResult === 'function') onResult({ ok: false, error: 'Usuario sin Telegram vinculado' })
+    return
+  }
+  if (!TG_USER_BOT) {
+    if (onNotConfigured && typeof onNotConfigured === 'function') onNotConfigured()
+    return
+  }
   fetch(`https://api.telegram.org/bot${TG_USER_BOT}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: cid, text }),
-  }).catch(() => {})
+  })
+    .then(async (res) => {
+      const body = await res.json().catch(() => ({}))
+      if (onResult) onResult(res.ok ? { ok: true } : { ok: false, error: body.description || body.error_description || `HTTP ${res.status}` })
+    })
+    .catch((err) => {
+      if (onResult) onResult({ ok: false, error: err.message || 'Error de red' })
+    })
 }
 
 const MASTER_SOLANA = (import.meta.env.VITE_MASTER_WALLET_SOLANA || '').trim()
@@ -288,7 +303,14 @@ export default function AdminPhantom() {
         const userChatId = getTelegramChatId(confirmacion?.profiles)
         const monto = Number(confirmacion?.monto) || 0
         const red = confirmacion?.red || ''
-        sendTelegramToUser(userChatId, `✅ LA BOMBA — Depósito acreditado\n\n+$${monto.toFixed(2)} USDC (${red})\nYa está en tu saldo. Puedes jugar o retirar cuando quieras.`)
+        sendTelegramToUser(
+          userChatId,
+          `✅ LA BOMBA — Depósito acreditado\n\n+$${monto.toFixed(2)} USDC (${red})\nYa está en tu saldo. Puedes jugar o retirar cuando quieras.`,
+          {
+            onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura VITE_TELEGRAM_USER_BOT_TOKEN en el build.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
+            onResult: (r) => { if (!r.ok) { setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` }); setTimeout(() => setEmailFeedback(null), 6000) } }
+          }
+        )
         if (confirmacion?.user_id != null && confirmacion?.monto != null) {
           try {
             const { data: { session } } = await supabase.auth.getSession()
@@ -449,7 +471,14 @@ export default function AdminPhantom() {
         const userChatId = getTelegramChatId(retiro?.profiles)
         const monto = Number(retiro?.monto) || 0
         const red = retiro?.red || ''
-        sendTelegramToUser(userChatId, `✅ LA BOMBA — Retiro procesado\n\n$${monto.toFixed(2)} USDC (${red})\nLos fondos han sido enviados a la dirección que indicaste.`)
+        sendTelegramToUser(
+          userChatId,
+          `✅ LA BOMBA — Retiro procesado\n\n$${monto.toFixed(2)} USDC (${red})\nLos fondos han sido enviados a la dirección que indicaste.`,
+          {
+            onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura VITE_TELEGRAM_USER_BOT_TOKEN en el build.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
+            onResult: (r) => { if (!r.ok) { setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` }); setTimeout(() => setEmailFeedback(null), 6000) } }
+          }
+        )
         if (retiro?.user_id != null && retiro?.monto != null) {
           try {
             const { data: { session } } = await supabase.auth.getSession()

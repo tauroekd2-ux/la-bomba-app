@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Copy, Share2 } from 'lucide-react'
+import { ArrowLeft, Copy, Eye, Share2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { supabase, PARTIDAS_SELECT_COLUMNS } from '../lib/supabase'
 import GameArena from '../components/GameArena'
@@ -32,6 +32,8 @@ function copyToClipboard(text) {
   }
 }
 
+const ADMIN_UID = (import.meta.env.VITE_PHANTOM_ADMIN_UID || '').trim()
+
 export default function Game() {
   const { partidaId } = useParams()
   const navigate = useNavigate()
@@ -44,6 +46,9 @@ export default function Game() {
   const [saliendo, setSaliendo] = useState(false)
   const [rivalAbandonoSala, setRivalAbandonoSala] = useState(false)
   const [showLeaveModal, setShowLeaveModal] = useState(false)
+  const [numeroSecreto, setNumeroSecreto] = useState(null)
+  const [loadingSecreto, setLoadingSecreto] = useState(false)
+  const isPhantomAdmin = !!(user && ADMIN_UID && user.id === ADMIN_UID)
   const leaveResolveRef = useRef(null)
   const avisoEntradaEnviadoRef = useRef(false)
   const partidaParaBroadcastRef = useRef(null)
@@ -246,6 +251,11 @@ export default function Game() {
     if (partida?.estado !== 'finalizada') setRivalAbandonoSala(false)
   }, [partida?.estado])
 
+  // Ocultar número secreto cuando se sale de la partida o termina
+  useEffect(() => {
+    if (partida?.estado !== 'jugando') setNumeroSecreto(null)
+  }, [partida?.estado])
+
   // Actualizar saldo en pantalla cuando la partida termina (gane o pierda)
   useEffect(() => {
     if (!partidaId || !partida || partida.estado !== 'finalizada') return
@@ -399,7 +409,31 @@ export default function Game() {
             </>
           )}
         </div>
-        <div className="w-24" />
+        <div className="w-24 flex justify-end items-center gap-2 flex-shrink-0">
+          {partida?.estado === 'jugando' && isPhantomAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!partidaId) return
+                  setLoadingSecreto(true)
+                  setNumeroSecreto(null)
+                  const { data } = await supabase.rpc('admin_ver_numero_prohibido', { p_partida_id: partidaId })
+                  setLoadingSecreto(false)
+                  if (data?.ok && typeof data.numero_prohibido === 'number') setNumeroSecreto(data.numero_prohibido)
+                  else setNumeroSecreto(-1)
+                }}
+                disabled={loadingSecreto}
+                className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/50 text-sm font-medium hover:bg-amber-500/30 active:scale-[0.98] touch-manipulation disabled:opacity-60"
+                title="Ver número secreto (bomba)"
+              >
+                <Eye className="w-4 h-4" />
+                {loadingSecreto ? '...' : numeroSecreto !== null && numeroSecreto >= 0 ? `Bomba: ${numeroSecreto}` : 'Nº secreto'}
+              </button>
+              {numeroSecreto === -1 && <span className="text-xs text-red-400">Error</span>}
+            </>
+          )}
+        </div>
       </header>
 
       <main className="w-full max-w-2xl px-2 sm:px-0 space-y-6">
