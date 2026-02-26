@@ -827,14 +827,30 @@ app.post('/api/admin/notify-retiro', async (req, res) => {
   }
 })
 
-// Sin webhook: el admin hace clic en el enlace del mensaje de Telegram y esta ruta ejecuta la acción.
+// Enlaces de Telegram: GET solo muestra confirmación (evita que la vista previa de Telegram ejecute la acción).
+// La acción real se ejecuta solo con POST (al enviar el formulario de confirmación).
 function htmlResp(title, body) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="font-family:sans-serif;max-width:360px;margin:2rem auto;padding:1rem;text-align:center;">${body}</body></html>`
 }
+function confirmPage(title, message, confirmLabel, confirmPath, secret, id, rejectPath) {
+  const s = escapeHtml(secret)
+  const i = escapeHtml(id)
+  const form = `<form method="post" action="${escapeHtml(confirmPath)}" style="margin:1rem 0;"><input type="hidden" name="secret" value="${s}"><input type="hidden" name="id" value="${i}"><button type="submit" style="padding:0.5rem 1.5rem;font-size:1rem;cursor:pointer;background:#22c55e;color:#fff;border:none;border-radius:8px;">${escapeHtml(confirmLabel)}</button></form>`
+  const cancel = rejectPath ? `<p><a href="${escapeHtml(rejectPath)}?secret=${s}&id=${i}" style="color:#888;">Cancelar / Rechazar</a></p>` : ''
+  return htmlResp(title, `<p>${message}</p>${form}${cancel}`)
+}
 
-app.get('/api/admin/approve-deposit', async (req, res) => {
+app.get('/api/admin/approve-deposit', (req, res) => {
   const secret = (req.query.secret || '').trim()
   const id = (req.query.id || '').trim()
+  if (!id || secret !== TELEGRAM_WEBHOOK_SECRET) {
+    return res.status(400).send(htmlResp('Error', '<p>Faltan parámetros o secret inválido.</p>'))
+  }
+  res.type('html').send(confirmPage('Depósito', '¿Acreditar este depósito?', 'Sí, acreditar', '/api/admin/approve-deposit', secret, id, '/api/admin/reject-deposit'))
+})
+app.post('/api/admin/approve-deposit', express.urlencoded({ extended: true }), async (req, res) => {
+  const secret = (req.body?.secret || req.query?.secret || '').trim()
+  const id = (req.body?.id || req.query?.id || '').trim()
   if (!id || secret !== TELEGRAM_WEBHOOK_SECRET || !SUPABASE_SERVICE_ROLE_KEY) {
     return res.status(400).send(htmlResp('Error', '<p>Faltan parámetros o secret inválido.</p>'))
   }
@@ -853,9 +869,17 @@ app.get('/api/admin/approve-deposit', async (req, res) => {
   res.type('html').send(htmlResp('Depósito', ok ? '<p>✅ Depósito acreditado.</p>' : `<p>❌ ${result?.error || 'Error'}</p>`))
 })
 
-app.get('/api/admin/reject-deposit', async (req, res) => {
+app.get('/api/admin/reject-deposit', (req, res) => {
   const secret = (req.query.secret || '').trim()
   const id = (req.query.id || '').trim()
+  if (!id || secret !== TELEGRAM_WEBHOOK_SECRET) {
+    return res.status(400).send(htmlResp('Error', '<p>Faltan parámetros o secret inválido.</p>'))
+  }
+  res.type('html').send(confirmPage('Depósito', '¿Rechazar este depósito?', 'Sí, rechazar', '/api/admin/reject-deposit', secret, id, '/api/admin/approve-deposit'))
+})
+app.post('/api/admin/reject-deposit', express.urlencoded({ extended: true }), async (req, res) => {
+  const secret = (req.body?.secret || req.query?.secret || '').trim()
+  const id = (req.body?.id || req.query?.id || '').trim()
   if (!id || secret !== TELEGRAM_WEBHOOK_SECRET || !SUPABASE_SERVICE_ROLE_KEY) {
     return res.status(400).send(htmlResp('Error', '<p>Faltan parámetros o secret inválido.</p>'))
   }
@@ -874,14 +898,22 @@ app.get('/api/admin/reject-deposit', async (req, res) => {
   res.type('html').send(htmlResp('Depósito', ok ? '<p>❌ Depósito rechazado.</p>' : `<p>${result?.error || 'Error'}</p>`))
 })
 
-app.get('/api/admin/approve-retiro', async (req, res) => {
+app.get('/api/admin/approve-retiro', (req, res) => {
   const secret = (req.query.secret || '').trim()
   const id = (req.query.id || '').trim()
+  if (!id || !secret || secret !== TELEGRAM_WEBHOOK_SECRET) {
+    return res.status(400).send(htmlResp('Error', '<p>Faltan parámetros o secret inválido.</p>'))
+  }
+  res.type('html').send(confirmPage('Retiro', '¿Marcar este retiro como procesado? (Enviarás los fondos al usuario.)', 'Sí, marcar procesado', '/api/admin/approve-retiro', secret, id, '/api/admin/reject-retiro'))
+})
+app.post('/api/admin/approve-retiro', express.urlencoded({ extended: true }), async (req, res) => {
+  const secret = (req.body?.secret || req.query?.secret || '').trim()
+  const id = (req.body?.id || req.query?.id || '').trim()
   if (!id || !secret || !SUPABASE_SERVICE_ROLE_KEY) {
     return res.status(400).send(htmlResp('Error', '<p>Faltan parámetros (secret, id).</p>'))
   }
   if (secret !== TELEGRAM_WEBHOOK_SECRET) {
-    return res.status(400).send(htmlResp('Error', '<p>Secret inválido (no coincide con TELEGRAM_WEBHOOK_SECRET del proxy).</p>'))
+    return res.status(400).send(htmlResp('Error', '<p>Secret inválido.</p>'))
   }
   const base = SUPABASE_URL.replace(/\/$/, '')
   const r = await fetch(`${base}/rest/v1/rpc/procesar_retiro_por_webhook`, {
@@ -897,7 +929,7 @@ app.get('/api/admin/approve-retiro', async (req, res) => {
   if (!r.ok) {
     const errMsg = result?.message || result?.error || result?.details || r.status
     console.error('[approve-retiro] Supabase RPC', r.status, errMsg)
-    return res.type('html').send(htmlResp('Retiro', `<p>❌ Error del servidor (${r.status}).</p><p>Si ves 404 o "function ... does not exist", ejecuta la migración 046 en Supabase (SQL Editor).</p><p><small>${escapeHtml(String(errMsg))}</small></p>`))
+    return res.type('html').send(htmlResp('Retiro', `<p>❌ Error del servidor (${r.status}).</p><p><small>${escapeHtml(String(errMsg))}</small></p>`))
   }
   if (!result?.ok) {
     return res.type('html').send(htmlResp('Retiro', `<p>❌ ${escapeHtml(result?.error || 'Error al aprobar')}</p>`))
@@ -918,9 +950,17 @@ app.get('/api/admin/approve-retiro', async (req, res) => {
   res.type('html').send(htmlResp('Retiro', '<p>✅ Retiro marcado como procesado.</p>'))
 })
 
-app.get('/api/admin/reject-retiro', async (req, res) => {
+app.get('/api/admin/reject-retiro', (req, res) => {
   const secret = (req.query.secret || '').trim()
   const id = (req.query.id || '').trim()
+  if (!id || secret !== TELEGRAM_WEBHOOK_SECRET) {
+    return res.status(400).send(htmlResp('Error', '<p>Faltan parámetros o secret inválido.</p>'))
+  }
+  res.type('html').send(confirmPage('Retiro', '¿Rechazar este retiro? (Se devuelve el saldo al usuario.)', 'Sí, rechazar', '/api/admin/reject-retiro', secret, id, '/api/admin/approve-retiro'))
+})
+app.post('/api/admin/reject-retiro', express.urlencoded({ extended: true }), async (req, res) => {
+  const secret = (req.body?.secret || req.query?.secret || '').trim()
+  const id = (req.body?.id || req.query?.id || '').trim()
   if (!id || secret !== TELEGRAM_WEBHOOK_SECRET || !SUPABASE_SERVICE_ROLE_KEY) {
     return res.status(400).send(htmlResp('Error', '<p>Faltan parámetros o secret inválido.</p>'))
   }
