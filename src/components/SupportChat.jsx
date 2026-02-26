@@ -3,21 +3,23 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Send, Headphones } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
-// En dev, el plugin de Vite atiende /api/support-chat en el mismo servidor (misma origen). En producción se usa el proxy.
+// En dev, el plugin de Vite atiende /api/support-chat en el mismo servidor. En producción se usa VITE_PROXY_URL.
 function getSupportApiBase() {
   if (import.meta.env.DEV && typeof window !== 'undefined') {
     return window.location.origin
   }
-  const env = (import.meta.env.VITE_PROXY_URL || 'http://localhost:3031').replace(/\/$/, '')
+  const env = (import.meta.env.VITE_PROXY_URL || '').replace(/\/$/, '')
+  if (env && !env.includes('localhost')) return env
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    if ((host !== 'localhost' && host !== '127.0.0.1') && env.includes('localhost')) {
-      return `http://${host}:3031`
-    }
+    if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:3031'
+    if (/\.onrender\.com$/.test(host)) return '' // En Render sin VITE_PROXY_URL: no adivinar URL
+    if (env.includes('localhost')) return `http://${host}:3031`
   }
-  return env
+  return env || 'http://localhost:3031'
 }
 const SUPPORT_API_BASE = getSupportApiBase()
+const IS_PROXY_MISSING_ON_RENDER = typeof window !== 'undefined' && /\.onrender\.com$/.test(window.location.hostname) && (!(import.meta.env.VITE_PROXY_URL || '').trim() || (import.meta.env.VITE_PROXY_URL || '').includes('localhost'))
 
 export default function SupportChat({ onClose }) {
   const { user, profile } = useAuth()
@@ -35,6 +37,10 @@ export default function SupportChat({ onClose }) {
     const trimmed = (text || '').trim()
     if (!trimmed) return
     setError('')
+    if (IS_PROXY_MISSING_ON_RENDER || !SUPPORT_API_BASE) {
+      setError('En Render: añade VITE_PROXY_URL en el Static Site (Environment) con la URL de tu proxy (ej. https://la-bomba-proxy.onrender.com) y vuelve a desplegar.')
+      return
+    }
     setMessages((prev) => [...prev, { role: 'user', text: trimmed }])
     setInput('')
     setLoading(true)
@@ -60,7 +66,11 @@ export default function SupportChat({ onClose }) {
       setMessages((prev) => [...prev, { role: 'model', text: data.reply || '' }])
     } catch (e) {
       const msg = (e && e.message) || ''
-      setError(msg.includes('fetch') ? 'No se pudo conectar con el servidor de soporte. Comprueba que el proxy esté en marcha (npm run proxy).' : (msg || 'Error de conexión'))
+      setError(msg.includes('fetch') || msg.includes('Failed to fetch')
+        ? (IS_PROXY_MISSING_ON_RENDER
+          ? 'Añade VITE_PROXY_URL en el Static Site de Render (Environment) con la URL del proxy y redeploya.'
+          : 'No se pudo conectar con el proxy de soporte. Comprueba que el servicio proxy esté activo en Render.')
+        : (msg || 'Error de conexión'))
       setMessages((prev) => prev.slice(0, -1))
     } finally {
       setLoading(false)
