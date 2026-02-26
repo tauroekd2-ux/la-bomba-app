@@ -41,6 +41,7 @@ const RESEND_FROM = (process.env.RESEND_FROM || 'LA BOMBA <onboarding@resend.dev
 const DEPOSIT_EMAIL_SECRET = (process.env.DEPOSIT_EMAIL_SECRET || '').trim()
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
 const TELEGRAM_ADMIN_CHAT_ID = (process.env.TELEGRAM_ADMIN_CHAT_ID || '').trim()
+const TELEGRAM_USER_BOT_TOKEN = (process.env.TELEGRAM_USER_BOT_TOKEN || '').trim()
 const TELEGRAM_NOTIFY_SECRET = (process.env.TELEGRAM_NOTIFY_SECRET || '').trim()
 const NTFY_TOPIC = (process.env.VITE_NTFY_TOPIC || process.env.NTFY_TOPIC || '').trim().replace(/-/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
 // Groq: IA en línea gratis (soporte y asistente admin). API key en https://console.groq.com
@@ -278,6 +279,42 @@ app.post('/api/send-retiro-procesado-email', async (req, res) => {
   } catch (e) {
     console.error('send-retiro-procesado-email error:', e.message)
     res.status(500).json({ error: e.message || 'Server error' })
+  }
+})
+
+// Telegram al usuario (depósito acreditado, retiro procesado). Solo admin con JWT. Token del bot de usuarios en el proxy.
+app.post('/api/send-telegram-to-user', async (req, res) => {
+  try {
+    const adminOk = await isAdminRequest(req)
+    if (!adminOk) {
+      return res.status(403).json({ ok: false, error: 'No autorizado' })
+    }
+    const { chat_id, text } = req.body || {}
+    const cid = (chat_id ?? '').toString().trim()
+    const msg = typeof text === 'string' ? text.trim() : ''
+    if (!cid || !msg) {
+      return res.status(400).json({ ok: false, error: 'Faltan chat_id o text' })
+    }
+    if (!TELEGRAM_USER_BOT_TOKEN) {
+      console.log('[send-telegram-to-user] skipped: TELEGRAM_USER_BOT_TOKEN not set')
+      return res.status(200).json({ ok: true, skipped: 'telegram_user_bot_not_configured' })
+    }
+    const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_USER_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: cid, text: msg }),
+    })
+    const body = await tgRes.json().catch(() => ({}))
+    if (!tgRes.ok) {
+      const errMsg = body.description || body.error_description || `HTTP ${tgRes.status}`
+      console.error('[send-telegram-to-user] Telegram API', tgRes.status, errMsg)
+      return res.status(200).json({ ok: false, error: errMsg })
+    }
+    console.log('[send-telegram-to-user] ok chat_id', cid)
+    res.status(200).json({ ok: true })
+  } catch (e) {
+    console.error('[send-telegram-to-user]', e.message)
+    res.status(500).json({ ok: false, error: e.message || 'Server error' })
   }
 })
 

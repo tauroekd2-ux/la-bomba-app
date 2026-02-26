@@ -28,11 +28,43 @@ function getProxyApiBase() {
 
 function sendTelegramToUser(chatId, text, callbacks = {}) {
   const cid = (chatId ?? '').toString().trim()
-  const { onNotConfigured, onResult } = callbacks
+  const { proxyBase, getAuthToken, onNotConfigured, onResult } = callbacks
   if (!cid) {
     if (onResult && typeof onResult === 'function') onResult({ ok: false, error: 'Usuario sin Telegram vinculado' })
     return
   }
+  const msg = (text || '').trim()
+  if (!msg) return
+
+  // Preferir proxy (mismo flujo que admin): token en servidor, no en el cliente
+  if (proxyBase && typeof getAuthToken === 'function') {
+    ;(async () => {
+      try {
+        const token = await getAuthToken()
+        if (!token) {
+          if (onResult) onResult({ ok: false, error: 'No autenticado' })
+          return
+        }
+        const r = await fetch(`${proxyBase.replace(/\/$/, '')}/api/send-telegram-to-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ chat_id: cid, text: msg }),
+        })
+        const data = await r.json().catch(() => ({}))
+        if (onResult) {
+          if (data.skipped === 'telegram_user_bot_not_configured') {
+            onResult({ ok: false, error: 'Proxy: configura TELEGRAM_USER_BOT_TOKEN en Render (Web Service)' })
+          } else {
+            onResult(r.ok && data.ok ? { ok: true } : { ok: false, error: data.error || `HTTP ${r.status}` })
+          }
+        }
+      } catch (err) {
+        if (onResult) onResult({ ok: false, error: err.message || 'Error de red' })
+      }
+    })()
+    return
+  }
+
   if (!TG_USER_BOT) {
     if (onNotConfigured && typeof onNotConfigured === 'function') onNotConfigured()
     return
@@ -40,7 +72,7 @@ function sendTelegramToUser(chatId, text, callbacks = {}) {
   fetch(`https://api.telegram.org/bot${TG_USER_BOT}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: cid, text }),
+    body: JSON.stringify({ chat_id: cid, text: msg }),
   })
     .then(async (res) => {
       const body = await res.json().catch(() => ({}))
@@ -307,7 +339,9 @@ export default function AdminPhantom() {
           userChatId,
           `✅ LA BOMBA — Depósito acreditado\n\n+$${monto.toFixed(2)} USDC (${red})\nYa está en tu saldo. Puedes jugar o retirar cuando quieras.`,
           {
-            onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura VITE_TELEGRAM_USER_BOT_TOKEN en el build.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
+            proxyBase: base,
+            getAuthToken: async () => { const { data } = await supabase.auth.getSession(); return data?.session?.access_token || null },
+            onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura TELEGRAM_USER_BOT_TOKEN en el proxy.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
             onResult: (r) => { if (!r.ok) { setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` }); setTimeout(() => setEmailFeedback(null), 6000) } }
           }
         )
@@ -475,7 +509,9 @@ export default function AdminPhantom() {
           userChatId,
           `✅ LA BOMBA — Retiro procesado\n\n$${monto.toFixed(2)} USDC (${red})\nLos fondos han sido enviados a la dirección que indicaste.`,
           {
-            onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura VITE_TELEGRAM_USER_BOT_TOKEN en el build.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
+            proxyBase: getProxyApiBase(),
+            getAuthToken: async () => { const { data } = await supabase.auth.getSession(); return data?.session?.access_token || null },
+            onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura TELEGRAM_USER_BOT_TOKEN en el proxy.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
             onResult: (r) => { if (!r.ok) { setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` }); setTimeout(() => setEmailFeedback(null), 6000) } }
           }
         )
