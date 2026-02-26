@@ -296,7 +296,11 @@ app.post('/api/send-telegram-to-user', async (req, res) => {
       return res.status(403).json({ ok: false, error: 'No autorizado. Inicia sesión como admin (usuario en admin_roles).' })
     }
     const { chat_id, text } = req.body || {}
-    const cid = (chat_id ?? '').toString().trim()
+    // Normalizar chat_id: solo dígitos o "-" + dígitos (Telegram)
+    let cid = (chat_id != null ? String(chat_id) : '').trim().replace(/\s/g, '')
+    const isGroup = cid.startsWith('-')
+    cid = cid.replace(/\D/g, '')
+    if (isGroup && cid) cid = '-' + cid
     const msg = typeof text === 'string' ? text.trim() : ''
     if (!cid || !msg) {
       return res.status(400).json({ ok: false, error: 'Faltan chat_id o text' })
@@ -305,6 +309,7 @@ app.post('/api/send-telegram-to-user', async (req, res) => {
       console.log('[send-telegram-to-user] TELEGRAM_USER_BOT_TOKEN no configurado en el proxy')
       return res.status(200).json({ ok: false, error: 'En Render: Web Service (proxy) → Environment → añade TELEGRAM_USER_BOT_TOKEN con el token del bot de usuarios.' })
     }
+    // Enviar con chat_id como string (API de Telegram lo acepta)
     const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_USER_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -313,10 +318,14 @@ app.post('/api/send-telegram-to-user', async (req, res) => {
     const body = await tgRes.json().catch(() => ({}))
     if (!tgRes.ok) {
       const errMsg = body.description || body.error_description || `HTTP ${tgRes.status}`
-      console.error('[send-telegram-to-user] Telegram API', tgRes.status, errMsg)
+      console.error('[send-telegram-to-user] Telegram API', tgRes.status, errMsg, 'body', JSON.stringify(body).slice(0, 200))
       return res.status(200).json({ ok: false, error: errMsg })
     }
-    console.log('[send-telegram-to-user] ok enviado a chat_id', cid)
+    if (!body.ok) {
+      console.error('[send-telegram-to-user] Telegram body.ok false', body)
+      return res.status(200).json({ ok: false, error: body.description || 'Telegram no envió el mensaje' })
+    }
+    console.log('[send-telegram-to-user] ok enviado a chat_id', cid.slice(0, 4) + '...' + cid.slice(-2))
     res.status(200).json({ ok: true })
   } catch (e) {
     console.error('[send-telegram-to-user]', e.message)

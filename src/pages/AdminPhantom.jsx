@@ -212,10 +212,16 @@ function userDisplayWithEmail(profiles, userId) {
   return `Usuario …${String(userId || '').slice(-8)}`
 }
 
+/** Chat ID de Telegram del usuario (solo dígitos y opcional "-", formato que acepta la API). */
 function getTelegramChatId(profiles) {
   const p = Array.isArray(profiles) ? profiles?.[0] : profiles
-  const cid = p?.telegram_chat_id
-  return (cid && String(cid).trim()) || null
+  const raw = p?.telegram_chat_id
+  if (raw == null || raw === '') return null
+  const s = String(raw).trim()
+  const isGroup = s.startsWith('-')
+  const digits = s.replace(/\D/g, '')
+  if (!digits) return null
+  return isGroup ? '-' + digits : digits
 }
 
 export default function AdminPhantom() {
@@ -356,7 +362,15 @@ export default function AdminPhantom() {
             proxyBase: base,
             getAuthToken: async () => { const { data } = await supabase.auth.getSession(); return data?.session?.access_token || null },
             onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura TELEGRAM_USER_BOT_TOKEN en el proxy.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
-            onResult: (r) => { if (!r.ok) { setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` }); setTimeout(() => setEmailFeedback(null), 6000) } }
+            onResult: (r) => {
+              if (r.ok) {
+                setEmailFeedback({ type: 'ok', text: 'Acreditado. Telegram enviado al usuario.' })
+                setTimeout(() => setEmailFeedback(null), 4000)
+              } else {
+                setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` })
+                setTimeout(() => setEmailFeedback(null), 6000)
+              }
+            }
           }
         )
         if (confirmacion?.user_id != null && confirmacion?.monto != null) {
@@ -526,7 +540,15 @@ export default function AdminPhantom() {
             proxyBase: getProxyApiBase(),
             getAuthToken: async () => { const { data } = await supabase.auth.getSession(); return data?.session?.access_token || null },
             onNotConfigured: userChatId ? () => { setEmailFeedback({ type: 'warn', text: 'Aviso por Telegram no enviado: configura TELEGRAM_USER_BOT_TOKEN en el proxy.' }); setTimeout(() => setEmailFeedback(null), 5000) } : undefined,
-            onResult: (r) => { if (!r.ok) { setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` }); setTimeout(() => setEmailFeedback(null), 6000) } }
+            onResult: (r) => {
+              if (r.ok) {
+                setEmailFeedback({ type: 'ok', text: 'Procesado. Telegram enviado al usuario.' })
+                setTimeout(() => setEmailFeedback(null), 4000)
+              } else {
+                setEmailFeedback({ type: 'warn', text: `Telegram al usuario: ${r.error}` })
+                setTimeout(() => setEmailFeedback(null), 6000)
+              }
+            }
           }
         )
         if (retiro?.user_id != null && retiro?.monto != null) {
