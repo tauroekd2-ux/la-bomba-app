@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const POLL_INTERVAL_MS = 20000 // 20 segundos
+const POLL_INTERVAL_MS = 10000 // 10 segundos (notificación in-app de "retiro procesado")
 
 /**
  * Polling: cada cierto tiempo se consultan los retiros del usuario.
