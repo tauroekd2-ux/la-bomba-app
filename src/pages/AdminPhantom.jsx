@@ -59,7 +59,13 @@ function sendTelegramToUser(chatId, text, callbacks = {}) {
           }
         }
       } catch (err) {
-        if (onResult) onResult({ ok: false, error: err.message || 'Error de red' })
+        const msg = err.message || 'Error de red'
+        if (onResult) onResult({
+          ok: false,
+          error: /fetch|failed|network|cors/i.test(msg)
+            ? 'No se pudo conectar al proxy. Comprueba VITE_PROXY_URL en el Static Site (ej. https://la-bomba-proxy.onrender.com).'
+            : msg,
+        })
       }
     })()
     return

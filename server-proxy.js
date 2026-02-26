@@ -285,9 +285,11 @@ app.post('/api/send-retiro-procesado-email', async (req, res) => {
 // Telegram al usuario (depósito acreditado, retiro procesado). Solo admin con JWT. Token del bot de usuarios en el proxy.
 app.post('/api/send-telegram-to-user', async (req, res) => {
   try {
+    console.log('[send-telegram-to-user] POST', { hasAuth: !!(req.headers?.authorization) })
     const adminOk = await isAdminRequest(req)
+    console.log('[send-telegram-to-user] adminOk', adminOk)
     if (!adminOk) {
-      return res.status(403).json({ ok: false, error: 'No autorizado' })
+      return res.status(403).json({ ok: false, error: 'No autorizado. Inicia sesión como admin (usuario en admin_roles).' })
     }
     const { chat_id, text } = req.body || {}
     const cid = (chat_id ?? '').toString().trim()
@@ -296,8 +298,8 @@ app.post('/api/send-telegram-to-user', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Faltan chat_id o text' })
     }
     if (!TELEGRAM_USER_BOT_TOKEN) {
-      console.log('[send-telegram-to-user] skipped: TELEGRAM_USER_BOT_TOKEN not set')
-      return res.status(200).json({ ok: true, skipped: 'telegram_user_bot_not_configured' })
+      console.log('[send-telegram-to-user] TELEGRAM_USER_BOT_TOKEN no configurado en el proxy')
+      return res.status(200).json({ ok: false, error: 'En Render: Web Service (proxy) → Environment → añade TELEGRAM_USER_BOT_TOKEN con el token del bot de usuarios.' })
     }
     const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_USER_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
@@ -310,7 +312,7 @@ app.post('/api/send-telegram-to-user', async (req, res) => {
       console.error('[send-telegram-to-user] Telegram API', tgRes.status, errMsg)
       return res.status(200).json({ ok: false, error: errMsg })
     }
-    console.log('[send-telegram-to-user] ok chat_id', cid)
+    console.log('[send-telegram-to-user] ok enviado a chat_id', cid)
     res.status(200).json({ ok: true })
   } catch (e) {
     console.error('[send-telegram-to-user]', e.message)
