@@ -353,12 +353,14 @@ app.post('/api/telegram-admin-notify', async (req, res) => {
     const montoNum = Number(monto)
     const redLabel = red ? ` (${red})` : ''
     const userInfo = [userName, userEmail].filter(Boolean).join(' · ') || 'Usuario'
+    const masterWallet = red === 'base' ? MASTER_BASE : red === 'polygon' ? MASTER_POLYGON : red === 'solana' ? MASTER_SOLANA : ''
+    const masterLine = masterWallet ? `\nWallet maestra (${red}): ${masterWallet}` : ''
     // Sin parse_mode para evitar fallos con caracteres raros en nombre/email
     let text
     if (type === 'retiro') {
-      text = `🔔 Nuevo retiro pendiente\n\n$${montoNum.toFixed(2)}${redLabel}\nUsuario: ${userInfo}${wallet_destino ? `\nDestino: ${String(wallet_destino).slice(0, 24)}...` : ''}`
+      text = `🔔 Nuevo retiro pendiente\n\n$${montoNum.toFixed(2)}${redLabel}\nUsuario: ${userInfo}${wallet_destino ? `\nDestino: ${String(wallet_destino).slice(0, 24)}...` : ''}${masterLine}`
     } else {
-      text = `🔔 Nueva confirmación de depósito pendiente\n\n$${montoNum.toFixed(2)}${redLabel}\nUsuario: ${userInfo}`
+      text = `🔔 Nueva confirmación de depósito pendiente\n\n$${montoNum.toFixed(2)}${redLabel}\nUsuario: ${userInfo}${masterLine}`
     }
     const tgRes = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -792,8 +794,10 @@ app.post('/api/admin/notify-retiro', async (req, res) => {
     const linkRechEsc = escapeHtml(linkRech)
     const walletDest = (ret.wallet_destino || '').trim()
     const walletPart = walletDest ? `Dirección: <code>${escapeHtml(walletDest)}</code>\n` : ''
+    const masterRet = ret.red === 'base' ? MASTER_BASE : ret.red === 'polygon' ? MASTER_POLYGON : ret.red === 'solana' ? MASTER_SOLANA : ''
+    const masterRetLine = masterRet ? `\nWallet maestra (${ret.red}): <code>${escapeHtml(masterRet)}</code>` : ''
     const linkRechazarPart = linkRech ? `\n✅ <a href="${linkAprobRetEsc}">Aprobar</a> (marca como procesado)\n❌ <a href="${linkRechEsc}">Rechazar</a> (devuelve saldo)` : '\n(Configura TELEGRAM_WEBHOOK_SECRET y ADMIN_LINKS_BASE para enlaces.)'
-    const textRetiro = `📤 RETIRO\nRed: ${ret.red}\nMonto a enviar: $${montoAEnviar.toFixed(2)} USDC (solicitado $${montoSolicitado.toFixed(2)} − comisión $${COMISION_RETIRO.toFixed(2)})\nUsuario: ${escapeHtml(userName)}\n${walletPart}${linkRechazarPart}`
+    const textRetiro = `📤 RETIRO\nRed: ${ret.red}\nMonto a enviar: $${montoAEnviar.toFixed(2)} USDC (solicitado $${montoSolicitado.toFixed(2)} − comisión $${COMISION_RETIRO.toFixed(2)})\nUsuario: ${escapeHtml(userName)}\n${walletPart}${masterRetLine}${linkRechazarPart}`
     const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
