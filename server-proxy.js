@@ -288,23 +288,51 @@ app.post('/api/send-retiro-procesado-email', async (req, res) => {
 })
 
 // ----- Bot de usuarios: notificaciones al usuario (depósito acreditado, retiro procesado) -----
-// El admin envía desde la app; el proxy usa TELEGRAM_USER_BOT_TOKEN para enviar por Telegram.
+// El admin envía user_id + text; el proxy obtiene telegram_chat_id de la BD (evita enviar al usuario equivocado).
 app.post('/api/send-telegram-to-user', async (req, res) => {
   try {
-    if (!(await isAdminRequest(req))) {
+    const hasToken = !!TELEGRAM_USER_BOT_TOKEN
+    const adminOk = await isAdminRequest(req)
+    if (!adminOk) {
+      console.warn('[send-telegram-to-user] 403: no autorizado (revisa JWT y admin_roles)')
       return res.status(403).json({ ok: false, error: 'No autorizado' })
     }
-    if (!TELEGRAM_USER_BOT_TOKEN) {
+    if (!hasToken) {
+      console.warn('[send-telegram-to-user] TELEGRAM_USER_BOT_TOKEN no configurado en el proxy')
       return res.status(200).json({ ok: false, error: 'En el proxy (Render) falta TELEGRAM_USER_BOT_TOKEN. Añade el token del bot de usuarios (@Tel_Bomba_bot).' })
     }
-    const { chat_id, text } = req.body || {}
-    const rawChat = chat_id != null ? String(chat_id).trim() : ''
+    const { user_id, text } = req.body || {}
+    const msg = (typeof text === 'string' ? text : '').trim()
+    if (!msg) {
+      return res.status(400).json({ ok: false, error: 'Falta text' })
+    }
+    const userId = (user_id && String(user_id).trim()) || null
+    if (!userId) {
+      return res.status(400).json({ ok: false, error: 'Falta user_id' })
+    }
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(500).json({ ok: false, error: 'Proxy sin SUPABASE_SERVICE_ROLE_KEY' })
+    }
+    const base = SUPABASE_URL.replace(/\/$/, '')
+    const profileRes = await fetch(
+      `${base}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=telegram_chat_id`,
+      {
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+    const profiles = await profileRes.json().catch(() => [])
+    const profile = Array.isArray(profiles) ? profiles[0] : null
+    const rawChat = profile?.telegram_chat_id != null ? String(profile.telegram_chat_id).trim() : ''
     const isNeg = rawChat.startsWith('-')
     const cid = rawChat.replace(/\D/g, '')
     const chatId = !cid ? '' : isNeg ? '-' + cid : cid
-    const msg = (typeof text === 'string' ? text : '').trim()
-    if (!chatId || !msg) {
-      return res.status(400).json({ ok: false, error: 'Faltan chat_id o text' })
+    if (!chatId) {
+      console.warn('[send-telegram-to-user] usuario sin Telegram vinculado:', userId)
+      return res.status(200).json({ ok: false, error: 'Usuario sin Telegram vinculado' })
     }
     const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_USER_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
@@ -314,9 +342,10 @@ app.post('/api/send-telegram-to-user', async (req, res) => {
     const body = await tgRes.json().catch(() => ({}))
     if (!tgRes.ok || !body.ok) {
       const err = body.description || body.error_description || `HTTP ${tgRes.status}`
-      console.error('[send-telegram-to-user]', err)
+      console.error('[send-telegram-to-user] Telegram API:', err, '| body:', JSON.stringify(body))
       return res.status(200).json({ ok: false, error: err })
     }
+    console.log('[send-telegram-to-user] ok, user_id:', userId, 'chat_id:', chatId)
     res.status(200).json({ ok: true })
   } catch (e) {
     console.error('[send-telegram-to-user]', e.message)

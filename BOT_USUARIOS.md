@@ -23,14 +23,12 @@ En el **Web Service (proxy)** de Render usa **una sola variable**:
 
 ## Cómo se envían los mensajes al usuario
 
-- **Solo vía proxy.** El cliente (Admin Phantom) no tiene el token del bot.
+- **Solo vía proxy.** El cliente (Admin Phantom) no tiene el token del bot y **no envía chat_id**: envía `user_id` para que el destinatario salga siempre de la base de datos (así no se cruzan notificaciones entre usuarios).
 - Flujo:
   1. Admin acredita depósito o marca retiro como procesado en Admin Phantom.
-  2. La app hace `POST /api/send-telegram-to-user` al proxy con `Authorization: Bearer <JWT>` y body `{ chat_id, text }`.
-  3. El proxy comprueba que el JWT sea de un admin (`admin_roles`), normaliza `chat_id` y llama a `https://api.telegram.org/bot<TELEGRAM_USER_BOT_TOKEN>/sendMessage`.
+  2. La app hace `POST /api/send-telegram-to-user` al proxy con `Authorization: Bearer <JWT>` y body `{ user_id, text }`.
+  3. El proxy comprueba que el JWT sea de un admin (`admin_roles`), busca `profiles.telegram_chat_id` para ese `user_id` en Supabase, normaliza el valor y llama a `https://api.telegram.org/bot<TELEGRAM_USER_BOT_TOKEN>/sendMessage`.
   4. Responde `{ ok: true }` o `{ ok: false, error: "..." }`.
-
-El `chat_id` sale del perfil del usuario (`profiles.telegram_chat_id`), que se guardó en la vinculación.
 
 ## Checklist
 

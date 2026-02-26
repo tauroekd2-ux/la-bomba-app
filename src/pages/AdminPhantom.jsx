@@ -25,14 +25,12 @@ function getProxyApiBase() {
   return (import.meta.env.VITE_PROXY_URL || 'http://localhost:3031').replace(/\/$/, '')
 }
 
-// Envía notificación por Telegram al usuario. SOLO vía proxy (token en servidor).
-function sendTelegramToUser(profileOrChatId, text, callbacks = {}) {
+// Envía notificación por Telegram al usuario. SOLO vía proxy: envía user_id y el proxy obtiene chat_id de la BD (evita enviar al usuario equivocado).
+function sendTelegramToUser(userId, text, callbacks = {}) {
   const { proxyBase, getAuthToken, onResult } = callbacks
-  const cid = profileOrChatId != null && typeof profileOrChatId === 'object'
-    ? getTelegramChatId(profileOrChatId)
-    : getTelegramChatId({ telegram_chat_id: profileOrChatId })
-  if (!cid) {
-    if (onResult) onResult({ ok: false, error: 'Usuario sin Telegram vinculado' })
+  const uid = userId != null && typeof userId === 'string' ? userId.trim() : (userId != null && typeof userId === 'object' && userId?.id ? String(userId.id).trim() : '')
+  if (!uid) {
+    if (onResult) onResult({ ok: false, error: 'Falta user_id' })
     return
   }
   const msg = (text || '').trim()
@@ -51,7 +49,7 @@ function sendTelegramToUser(profileOrChatId, text, callbacks = {}) {
       const r = await fetch(`${base}/api/send-telegram-to-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ chat_id: cid, text: msg }),
+        body: JSON.stringify({ user_id: uid, text: msg }),
       })
       const data = await r.json().catch(() => ({}))
       if (onResult) onResult(r.ok && data.ok ? { ok: true } : { ok: false, error: data.error || `HTTP ${r.status}` })
@@ -316,22 +314,21 @@ export default function AdminPhantom() {
       if (data?.ok) {
         await loadConfirmaciones()
         const base = getProxyApiBase()
-        const userChatId = getTelegramChatId(confirmacion?.profiles)
         const monto = Number(confirmacion?.monto) || 0
         const red = confirmacion?.red || ''
         sendTelegramToUser(
-          confirmacion?.profiles,
+          confirmacion?.user_id,
           `✅ LA BOMBA — Depósito acreditado\n\n+$${monto.toFixed(2)} USDC (${red})\nYa está en tu saldo. Puedes jugar o retirar cuando quieras.`,
           {
             proxyBase: base,
             getAuthToken: async () => { const { data } = await supabase.auth.getSession(); return data?.session?.access_token || null },
             onResult: (r) => {
               if (r.ok) {
-                setEmailFeedback({ type: 'ok', text: 'Acreditado. Telegram enviado al usuario.' })
-                setTimeout(() => setEmailFeedback(null), 4000)
+                setEmailFeedback((prev) => (prev?.type === 'warn' && prev?.text?.startsWith('Telegram:')) ? prev : { type: 'ok', text: 'Acreditado. Telegram enviado al usuario.' })
+                setTimeout(() => setEmailFeedback(null), 5000)
               } else {
                 setEmailFeedback({ type: 'warn', text: `Telegram: ${r.error}` })
-                setTimeout(() => setEmailFeedback(null), 6000)
+                setTimeout(() => setEmailFeedback(null), 8000)
               }
             }
           }
@@ -353,15 +350,15 @@ export default function AdminPhantom() {
             })
             const json = await r.json().catch(() => ({}))
             if (r.ok && json.id) {
-              setEmailFeedback({ type: 'ok', text: 'Depósito acreditado. Email enviado.' })
+              setEmailFeedback((prev) => (prev?.type === 'warn' && prev?.text?.startsWith('Telegram:')) ? prev : { type: 'ok', text: 'Depósito acreditado. Email enviado.' })
             } else if (json.skipped === 'no_resend_key') {
-              setEmailFeedback({ type: 'warn', text: 'Acreditado. Email no enviado: falta RESEND_API_KEY en .env del proxy.' })
+              setEmailFeedback((prev) => (prev?.type === 'warn' && prev?.text?.startsWith('Telegram:')) ? prev : { type: 'warn', text: 'Acreditado. Email no enviado: falta RESEND_API_KEY en .env del proxy.' })
             } else if (json.skipped === 'no_email') {
-              setEmailFeedback({ type: 'warn', text: 'Acreditado. Email no enviado: el usuario no tiene email en el perfil.' })
+              setEmailFeedback((prev) => (prev?.type === 'warn' && prev?.text?.startsWith('Telegram:')) ? prev : { type: 'warn', text: 'Acreditado. Email no enviado: el usuario no tiene email en el perfil.' })
             } else if (!r.ok) {
-              setEmailFeedback({ type: 'warn', text: `Acreditado. Email no enviado: ${json.error || r.status}.` })
+              setEmailFeedback((prev) => (prev?.type === 'warn' && prev?.text?.startsWith('Telegram:')) ? prev : { type: 'warn', text: `Acreditado. Email no enviado: ${json.error || r.status}.` })
             } else {
-              setEmailFeedback({ type: 'ok', text: 'Depósito acreditado.' })
+              setEmailFeedback((prev) => (prev?.type === 'warn' && prev?.text?.startsWith('Telegram:')) ? prev : { type: 'ok', text: 'Depósito acreditado.' })
             }
             setTimeout(() => setEmailFeedback(null), 6000)
           } catch (err) {
@@ -493,14 +490,13 @@ export default function AdminPhantom() {
       if (data?.ok) {
         await load()
         const base = getProxyApiBase()
-        const userChatId = getTelegramChatId(retiro?.profiles)
         const monto = Number(retiro?.monto) || 0
         const red = retiro?.red || ''
         sendTelegramToUser(
-          retiro?.profiles,
+          retiro?.user_id,
           `✅ LA BOMBA — Retiro procesado\n\n$${monto.toFixed(2)} USDC (${red})\nLos fondos han sido enviados a la dirección que indicaste.`,
           {
-            proxyBase: getProxyApiBase(),
+            proxyBase: base,
             getAuthToken: async () => { const { data } = await supabase.auth.getSession(); return data?.session?.access_token || null },
             onResult: (r) => {
               if (r.ok) {
@@ -661,9 +657,14 @@ export default function AdminPhantom() {
             <p className="text-zinc-500 text-sm mb-3">Solo se muestran las confirmaciones que hicieron los usuarios y las que se cancelaron.</p>
 
             {emailFeedback && (
-              <p className={`text-sm mb-3 px-3 py-2 rounded-xl ${emailFeedback.type === 'ok' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                {emailFeedback.text}
-              </p>
+              <div className="mb-3">
+                <p className={`text-sm px-3 py-2 rounded-xl ${emailFeedback.type === 'ok' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                  {emailFeedback.text}
+                </p>
+                {emailFeedback.type === 'warn' && emailFeedback.text?.startsWith('Telegram:') && (
+                  <p className="text-xs text-zinc-500 mt-1 px-3">Revisa en Render los logs del proxy (send-telegram-to-user) para más detalle.</p>
+                )}
+              </div>
             )}
 
             {confirmaciones.filter((c) => c.estado === 'pendiente').length > 0 && (
@@ -816,6 +817,16 @@ export default function AdminPhantom() {
           <section className="space-y-4">
             <h2 className="text-lg font-semibold text-amber-400 mb-2">Retiros</h2>
             <p className="text-zinc-500 text-sm">Copia la dirección, paga el monto en Phantom y marca como procesado.</p>
+            {emailFeedback && (
+              <div className="mb-3">
+                <p className={`text-sm px-3 py-2 rounded-xl ${emailFeedback.type === 'ok' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                  {emailFeedback.text}
+                </p>
+                {emailFeedback.type === 'warn' && emailFeedback.text?.startsWith('Telegram:') && (
+                  <p className="text-xs text-zinc-500 mt-1 px-3">Revisa en Render los logs del proxy (send-telegram-to-user) para más detalle.</p>
+                )}
+              </div>
+            )}
             {loading ? (
               <div className="flex justify-center py-12">
                 <motion.div
