@@ -293,8 +293,9 @@ app.post('/api/send-telegram-to-user', async (req, res) => {
   try {
     const hasToken = !!TELEGRAM_USER_BOT_TOKEN
     const adminOk = await isAdminRequest(req)
-    if (!adminOk) {
-      console.warn('[send-telegram-to-user] 403: no autorizado (revisa JWT y admin_roles)')
+    const secretOk = TELEGRAM_WEBHOOK_SECRET && (req.body?.secret === TELEGRAM_WEBHOOK_SECRET)
+    if (!adminOk && !secretOk) {
+      console.warn('[send-telegram-to-user] 403: no autorizado (revisa JWT, admin_roles o secret)')
       return res.status(403).json({ ok: false, error: 'No autorizado' })
     }
     if (!hasToken) {
@@ -1017,11 +1018,19 @@ app.post('/api/admin/approve-retiro', express.urlencoded({ extended: true }), as
   const ret = Array.isArray(rets) ? rets[0] : null
   if (ret?.user_id != null && ret?.monto != null) {
     const proxyBase = `http://127.0.0.1:${PORT}`
+    const monto = Number(ret.monto)
+    const red = ret.red || ''
+    const msg = `✅ LA BOMBA — Retiro procesado\n\n$${monto.toFixed(2)} USDC (${red})\nLos fondos han sido enviados a la dirección que indicaste.`
     fetch(`${proxyBase}/api/send-retiro-procesado-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: ret.user_id, monto: Number(ret.monto), red: ret.red || null, ...(DEPOSIT_EMAIL_SECRET && { secret: DEPOSIT_EMAIL_SECRET }) }),
+      body: JSON.stringify({ user_id: ret.user_id, monto, red: ret.red || null, ...(DEPOSIT_EMAIL_SECRET && { secret: DEPOSIT_EMAIL_SECRET }) }),
     }).catch(() => {})
+    fetch(`${proxyBase}/api/send-telegram-to-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: ret.user_id, text: msg, secret: TELEGRAM_WEBHOOK_SECRET || undefined }),
+    }).catch((e) => console.error('[approve-retiro] send-telegram-to-user', e.message))
   }
   res.type('html').send(htmlResp('Retiro', '<p>✅ Retiro marcado como procesado.</p>'))
 })
