@@ -18,7 +18,7 @@ En el **Web Service (proxy)** de Render usa **una sola variable**:
 1. El usuario en la app va a **Notificaciones → Telegram notificaciones**.
 2. La app genera un enlace tipo `https://t.me/TuBotUsuario_bot?start=TOKEN` (usa `VITE_TELEGRAM_USER_BOT_USERNAME` y un token en BD).
 3. El usuario abre Telegram y pulsa **Start** con ese enlace → envía `/start TOKEN` al bot.
-4. **Webhook** (Edge Function `telegram-user-bot-webhook`): recibe la actualización, llama a `consume_telegram_link_token(p_token, p_chat_id)` y guarda `telegram_chat_id` en `profiles`.
+4. **Webhook** (Edge Function `telegram-user-bot-webhook`): recibe la actualización, llama a `consume_telegram_link_token(p_token, p_chat_id)` y guarda `telegram_chat_id` en `profiles`. Si ese mismo chat_id estaba en otro usuario, se le quita (un chat_id = un solo usuario).
 5. A partir de ahí, ese usuario recibe las notificaciones de depósito y retiro por Telegram.
 
 ## Cómo se envían los mensajes al usuario
