@@ -40,7 +40,9 @@ export async function handler(req: Request): Promise<Response> {
   const supabaseUrl = getEnv("SUPABASE_URL");
   const supabaseServiceKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const resendApiKey = getEnv("RESEND_API_KEY");
-  const fromEmail = getEnv("RESEND_FROM") || "LA BOMBA <onboarding@resend.dev>";
+  const appName = "LA BOMBA";
+  const rawFrom = getEnv("RESEND_FROM") || `${appName} <onboarding@resend.dev>`;
+  const fromEmail = rawFrom.includes("<") ? rawFrom : `${appName} <${rawFrom.trim()}>`;
 
   if (!supabaseUrl || !supabaseServiceKey) {
     console.error("Missing Supabase config");
@@ -107,13 +109,14 @@ export async function handler(req: Request): Promise<Response> {
 
   const nombre = profile.full_name || "Usuario";
   const redLabel = red ? ` (${red})` : "";
-  const subject = "Depósito acreditado en LA BOMBA";
+  const subject = `Depósito acreditado en ${appName}`;
   const html = `
+    <p style="font-weight:bold;font-size:1.1em;margin-bottom:1em;">${appName}</p>
     <p>Hola ${nombre},</p>
     <p>Tu depósito ha sido acreditado.</p>
     <p><strong>+$${monto.toFixed(2)}</strong>${redLabel} ya están en tu saldo.</p>
     <p>Puedes usarlos para jugar en la app.</p>
-    <p>— LA BOMBA</p>
+    <p>— ${appName}</p>
   `;
 
   const controller = new AbortController();
