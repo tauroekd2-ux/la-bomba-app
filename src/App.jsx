@@ -16,7 +16,6 @@ import Join from './pages/Join'
 import PlayFree from './pages/PlayFree'
 import AdminPhantom from './pages/AdminPhantom'
 import Terminos from './pages/Terminos'
-import ConfirmarEmail from './pages/ConfirmarEmail'
 
 function ChatNotifications() {
   const { user, refreshBalance } = useAuth()
@@ -137,7 +136,6 @@ function ChatOrRoutes() {
         <Route path="/play-free" element={<PlayFree />} />
         <Route path="/admin-phantom" element={<AdminPhantom />} />
         <Route path="/terminos" element={<Terminos />} />
-        <Route path="/confirmar" element={<ConfirmarEmail />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {chatOpen && <CajaChat onClose={closeChat} />}

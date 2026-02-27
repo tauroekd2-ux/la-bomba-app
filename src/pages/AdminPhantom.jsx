@@ -200,7 +200,6 @@ export default function AdminPhantom() {
   const [copiedAddressId, setCopiedAddressId] = useState(null)
   const [adminTab, setAdminTab] = useState('retiros') // 'enlaces' | 'depositos' | 'retiros' | 'estadisticas' | 'asistente'
   const [estadisticas, setEstadisticas] = useState(null)
-  const [userStats, setUserStats] = useState(null)
   const [adminChatMessages, setAdminChatMessages] = useState([])
   const [adminChatInput, setAdminChatInput] = useState('')
   const [adminChatLoading, setAdminChatLoading] = useState(false)
@@ -222,7 +221,6 @@ export default function AdminPhantom() {
     load()
     loadConfirmaciones()
     loadEstadisticas()
-    loadUserStats()
     const channel = supabase
       .channel('admin-retiros')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'retiros_phantom' }, () => load())
@@ -253,12 +251,6 @@ export default function AdminPhantom() {
     const { data } = await supabase.rpc('admin_estadisticas_dinero')
     if (data?.ok) setEstadisticas(data)
     else setEstadisticas(null)
-  }
-
-  async function loadUserStats() {
-    const { data } = await supabase.rpc('admin_estadisticas_usuarios')
-    if (data?.ok) setUserStats(data)
-    else setUserStats(null)
   }
 
   async function sendAsistenteMessage() {
@@ -601,7 +593,7 @@ export default function AdminPhantom() {
           </button>
           <button
             type="button"
-            onClick={() => { setAdminTab('estadisticas'); loadEstadisticas(); loadUserStats() }}
+            onClick={() => { setAdminTab('estadisticas'); loadEstadisticas() }}
             className={`flex-shrink-0 py-2.5 px-3 rounded-xl text-sm font-semibold touch-manipulation min-h-[44px] transition ${adminTab === 'estadisticas' ? 'bg-violet-500/20 text-violet-400 border border-violet-500/50' : 'text-zinc-400 hover:text-zinc-300'}`}
           >
             Estadísticas
@@ -970,28 +962,6 @@ export default function AdminPhantom() {
                 {limpiandoAdmin ? 'Borrando…' : 'Borrar todo (empezar de cero)'}
               </button>
             </div>
-            {userStats?.ok && (
-              <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl bg-zinc-800/70 border border-zinc-700 p-3">
-                  <p className="text-xs text-zinc-400 mb-1">Usuarios registrados</p>
-                  <p className="text-lg font-mono text-amber-300">
-                    {userStats.total_usuarios ?? 0}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-zinc-800/70 border border-zinc-700 p-3">
-                  <p className="text-xs text-zinc-400 mb-1">Activos hoy</p>
-                  <p className="text-lg font-mono text-emerald-300">
-                    {userStats.activos_hoy ?? 0}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-zinc-800/70 border border-zinc-700 p-3">
-                  <p className="text-xs text-zinc-400 mb-1">En línea (últimos 5 min)</p>
-                  <p className="text-lg font-mono text-sky-300">
-                    {userStats.online_5min ?? 0}
-                  </p>
-                </div>
-              </div>
-            )}
             {estadisticas?.ok ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

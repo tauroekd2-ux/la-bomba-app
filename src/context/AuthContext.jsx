@@ -62,34 +62,6 @@ export function AuthProvider({ children }) {
     return () => supabase.removeChannel(channel)
   }, [user?.id])
 
-  // Heartbeat: actualizar last_seen_at periódicamente para saber quién está en línea
-  useEffect(() => {
-    if (!user?.id) return
-
-    let cancelled = false
-
-    async function touchLastSeen() {
-      try {
-        await supabase
-          .from('profiles')
-          .update({ last_seen_at: new Date().toISOString() })
-          .eq('id', user.id)
-      } catch (_) {}
-    }
-
-    // Primer toque al entrar
-    touchLastSeen()
-
-    const interval = setInterval(() => {
-      if (!cancelled) touchLastSeen()
-    }, 60000)
-
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [user?.id])
-
   const value = {
     user,
     profile,
